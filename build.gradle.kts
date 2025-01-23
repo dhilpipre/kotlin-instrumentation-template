@@ -9,26 +9,27 @@ import java.io.*
 buildscript {
 
     extra["developerGroup"] = "com.newrelic.instrumentation.labs"
-    extra["javaAgentVersion"] = "6.4.0"
+    extra["javaAgentVersion"] = "8.14.0"
 
 
     repositories {
-        flatDir{
-            dirs("template-lib")
-        }
-        mavenLocal()
-        mavenCentral()
-        gradlePluginPortal()
+    flatDir{
+        dirs("template-lib")
     }
+    mavenLocal()
+    mavenCentral()
+    gradlePluginPortal()
+  }
 
-    dependencies {
-        classpath("com.newrelic.agent.java:gradle-verify-instrumentation-plugin:3.2")
-        classpath("de.undercouch:gradle-download-task:5.0.0")
-    }
+  dependencies {
+      classpath("com.newrelic.agent.java:gradle-verify-instrumentation-plugin:3.2")
+      classpath("de.undercouch:gradle-download-task:5.0.0")
+  }
 }
 
 plugins {
     id("java")
+     id("org.jetbrains.kotlin.jvm") version "1.8.20"
 }
 
 apply(plugin = "java")
@@ -86,8 +87,6 @@ tasks {
         findByName("jar")?.mustRunAfter("checkForDependencies")
     }
 
-
-
     register("createModule") {
         dependsOn("checkForDependencies")
         description = "Generate project files for a new instrumentation module"
@@ -95,7 +94,7 @@ tasks {
         doLast {
             val rootProject: String = projectDir.path
             val developerGroup: String = "com.newrelic.instrumentation.labs"
-
+         
             println("root directory " + rootProject)
 
             val reader = BufferedReader(InputStreamReader(System.`in`))
@@ -151,32 +150,33 @@ tasks {
 
 
 subprojects {
-    repositories {
-        mavenLocal()
-        mavenCentral()
-    }
+  repositories {
+    mavenLocal()
+    mavenCentral()
+  }
 
-    apply(plugin = "java")
-    apply(plugin = "eclipse")
-    apply(plugin = "idea")
-    apply(plugin = "com.newrelic.gradle-verify-instrumentation-plugin")
+  apply(plugin = "java")
+  apply(plugin = "eclipse")
+  apply(plugin = "idea")
+  apply(plugin = "com.newrelic.gradle-verify-instrumentation-plugin")
+  apply(plugin = "org.jetbrains.kotlin.jvm")
 
-    val sourceCompatibility = java_version
-    val targetCompatibility = java_version
+  val sourceCompatibility = java_version
+  val targetCompatibility = java_version
 
-    dependencies {
-        testImplementation(
-            fileTree("./libs") {
-                include("*.jar")
-            }
-        )
-        testImplementation("org.nanohttpd:nanohttpd:2.3.1")
-        testImplementation("com.newrelic.agent.java:newrelic-agent:" + javaAgentVersion)
-    }
+  dependencies {
+    testImplementation(
+        fileTree("./libs") {
+            include("*.jar")
+        }
+    )
+    testImplementation("org.nanohttpd:nanohttpd:2.3.1")
+    testImplementation("com.newrelic.agent.java:newrelic-agent:" + javaAgentVersion)
+  }
 
     tasks {
         create<Copy>("install") {
-            dependsOn("buildIfNeeded")
+            dependsOn(rootProject.tasks.named("buildIfNeeded"))
             description ="Copies compiled jar to the NEW_RELIC_EXTENSIONS_DIR."
             group = "New Relic"
 
@@ -204,11 +204,9 @@ subprojects {
 
     }
 
-    tasks.named<JavaCompile>("compileJava") {
-        doFirst {
-            tasks.findByName("checkForDependencies")
-        }
-    }
-
-
+  tasks.named<JavaCompile>("compileJava") {
+      doFirst {
+          tasks.findByName("checkForDependencies")
+      }
+  }
 }
