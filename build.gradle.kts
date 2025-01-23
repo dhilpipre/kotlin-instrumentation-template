@@ -1,44 +1,55 @@
+import de.undercouch.gradle.tasks.download.Download
+import org.gradle.api.tasks.Input
+import java.io.*
+
 // Build.gradle for creating or installing new instrumentation modules
 
 
 // Global defaults - override here or in individual modules as needed.
 buildscript {
 
+    extra["developerGroup"] = "com.newrelic.instrumentation.labs"
+    extra["javaAgentVersion"] = "6.4.0"
+
 
     repositories {
-    flatDir{
-        dirs("template-lib")
+        flatDir{
+            dirs("template-lib")
+        }
+        mavenLocal()
+        mavenCentral()
+        gradlePluginPortal()
     }
-    mavenLocal()
-    mavenCentral()
-    gradlePluginPortal()
-  }
 
-  dependencies {
-      classpath("com.newrelic.agent.java:gradle-verify-instrumentation-plugin:3.2")
-      classpath("de.undercouch:gradle-download-task:5.0.0")
-  }
+    dependencies {
+        classpath("com.newrelic.agent.java:gradle-verify-instrumentation-plugin:3.2")
+        classpath("de.undercouch:gradle-download-task:5.0.0")
+    }
 }
 
 plugins {
     id("java")
 }
 
-
-project.ext {
-    extra.apply{
-        set("group","com.newrelic.instrumentation.labs")
-        set("javaAgentVersion","6.4.0")
-        set("javaVersion",JavaVersion.VERSION_1_8)
-    }
-
-    // Aligned with minimum Java major version supported by latest Java Agent
-
-}
-
-
 apply(plugin = "java")
 apply(plugin = "de.undercouch.download")
+
+val javaAgentVersion: String = extra["javaAgentVersion"] as String
+val developerGroup: String = extra["developerGroup"] as String
+val java_version = JavaVersion.VERSION_1_8
+
+tasks.create<Download>("getAgent") {
+    val rootDirectory = projectDir.path
+    val srcURI = buildString {
+        append("https://repo1.maven.org/maven2/com/newrelic/agent/java/newrelic-agent/")
+        append(javaAgentVersion)
+        append("/newrelic-agent-")
+        append(javaAgentVersion)
+        append(".jar")
+    }
+    src(srcURI)
+    dest(projectDir.path+"/libs/newrelic-agent-"+javaAgentVersion+".jar")
+}
 
 tasks.create<Copy>("extractJars") {
 
@@ -58,13 +69,13 @@ tasks.create<Delete>("cleanUp") {
 }
 
 tasks.create<Exec>("checkForDependencies") {
-    val javaAgentVersion: String by extra
-//    environment("JAVAAGENTVERSION", javaAgentVersion)
     val rootProject = projectDir.path
     val cmdLine = rootProject+"/newrelic-dependencies.sh"
     workingDir(rootProject)
     commandLine(cmdLine)
 }
+
+
 
 
 tasks {
@@ -82,12 +93,17 @@ tasks {
         description = "Generate project files for a new instrumentation module"
         group = "New Relic"
         doLast {
+            val rootProject: String = projectDir.path
+            val developerGroup: String = "com.newrelic.instrumentation.labs"
 
-            val rootProject = projectDir.path
+            println("root directory " + rootProject)
 
+            val reader = BufferedReader(InputStreamReader(System.`in`))
 
-            var projectGroup = System.console().readLine("Instrumentation Module Group (default: " + extra["group"]  + ") (Hit return to use default):\n")
-            var projectName = System.console().readLine("Instrumentation Module Name:\n")
+            println("Instrumentation Module Group (default: " + developerGroup + ") (Hit return to use default):\n")
+            var projectGroup = reader.readLine()
+            println("Instrumentation Module Name:\n")
+            var projectName = reader.readLine() //System.console()?.readLine("Instrumentation Module Name:\n")
 
             if (projectName == null) {
                 throw Exception("Please specify a valid module name.")
@@ -96,7 +112,7 @@ tasks {
             }
 
             if (projectGroup == null || projectGroup.trim() == "") {
-                projectGroup = extra["group"] as String
+                projectGroup = developerGroup
             } else {
                 projectGroup = projectGroup.trim()
             }
@@ -113,10 +129,20 @@ tasks {
             mkdir(projectJava)
             mkdir(projectTest)
 
-            val subProjectBuildFile = file(projectPath.path + "/build.gradle.kts")
+            val projectKotlin = file(projectPath.path + "/src/main/kotlin")
+            val projectKotlinTest = file(projectPath.path +  "/src/test/kotlin")
+            mkdir(projectKotlin)
+            mkdir(projectKotlinTest)
 
-            val settings = file("settings.gradle")
-            settings.appendText("include "+projectName+"\n")
+            val subProjectBuildFile = file(projectPath.path + "/build.gradle.kts")
+            val subprojectTemplate = file(rootProject + "/subproject.template")
+            val contents = subprojectTemplate.readText()
+
+            val updatedContents = contents.replace("PROJECT_GROUP", projectGroup).replace("PROJECT_NAME", projectName).replace("PROJECT_PATH", projectPath.path).replace("JAVA_AGENT_VERSION", javaAgentVersion)
+            subProjectBuildFile.writeText(updatedContents)
+
+            val settings = file("settings.gradle.kts")
+            settings.appendText("include(\""+projectName+"\")\n")
             println("Created module in "+projectPath.path+".")
         }
     }
@@ -125,28 +151,28 @@ tasks {
 
 
 subprojects {
-  repositories {
-    mavenLocal()
-    mavenCentral()
-  }
+    repositories {
+        mavenLocal()
+        mavenCentral()
+    }
 
-  apply(plugin = "java")
-  apply(plugin = "eclipse")
-  apply(plugin = "idea")
-  apply(plugin = "com.newrelic.gradle-verify-instrumentation-plugin")
+    apply(plugin = "java")
+    apply(plugin = "eclipse")
+    apply(plugin = "idea")
+    apply(plugin = "com.newrelic.gradle-verify-instrumentation-plugin")
 
-  val sourceCompatibility = extra["javaVersion"]
-  val targetCompatibility = extra["javaVersion"]
+    val sourceCompatibility = java_version
+    val targetCompatibility = java_version
 
-  dependencies {
-//    testImplementation(
-//        fileTree(dir("../lib") {
-//            include("*.jar")
-//        })
-//    )
-    testImplementation("org.nanohttpd:nanohttpd:2.3.1")
-    testImplementation("com.newrelic.agent.java:newrelic-agent:" + extra["javaAgentVersion"] as String)
-  }
+    dependencies {
+        testImplementation(
+            fileTree("./libs") {
+                include("*.jar")
+            }
+        )
+        testImplementation("org.nanohttpd:nanohttpd:2.3.1")
+        testImplementation("com.newrelic.agent.java:newrelic-agent:" + javaAgentVersion)
+    }
 
     tasks {
         create<Copy>("install") {
@@ -160,7 +186,7 @@ subprojects {
             into(extDir)
 
             doFirst  {
-                var extDir = System.getenv("NEW_RELIC_EXTENSIONS_DIR")
+                var extDir  = System.getenv("NEW_RELIC_EXTENSIONS_DIR")
                 if (extDir == null) {
                     throw Exception("Must set NEW_RELIC_EXTENSIONS_DIR.")
                 }
@@ -178,11 +204,11 @@ subprojects {
 
     }
 
-  tasks.named<JavaCompile>("compileJava") {
-      doFirst {
-          tasks.findByName("checkForDependencies")
-      }
-  }
+    tasks.named<JavaCompile>("compileJava") {
+        doFirst {
+            tasks.findByName("checkForDependencies")
+        }
+    }
 
 
 }

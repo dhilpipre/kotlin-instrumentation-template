@@ -1,1 +1,1 @@
-rootProject.name = 'java-instrumentation-template'
+rootProject.name = "java-instrumentation-template"
